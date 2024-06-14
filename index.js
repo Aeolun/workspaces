@@ -42,7 +42,6 @@ function discoverWorkspaces() {
       fs.readFileSync(path.resolve(PNPM_WORKSPACE_PATH), { encoding: 'utf-8' })
     ));
   }
-
   return { publishConfig, workspaces };
 }
 
@@ -451,6 +450,7 @@ export default class WorkspacesPlugin extends Plugin {
     const otpArg = otp.value ? ` --otp ${otp.value}` : '';
     const accessArg = access ? ` --access ${access}` : '';
     const dryRunArg = this.config.isDryRun ? ' --dry-run' : '';
+    const publishExecutable = hasPnpm() ? 'pnpm' : 'npm';
 
     if (workspaceInfo.isPrivate) {
       this.debug(`${workspaceInfo.name}: Skip publish (package is private)`);
@@ -459,7 +459,7 @@ export default class WorkspacesPlugin extends Plugin {
 
     try {
       await this.exec(
-        `npm publish ./${workspaceInfo.relativeRoot} --tag ${tag}${accessArg}${otpArg}${dryRunArg}`,
+        `${publishExecutable} publish ./${workspaceInfo.relativeRoot} --tag ${tag}${accessArg}${otpArg}${dryRunArg}`,
         {
           options,
         }
