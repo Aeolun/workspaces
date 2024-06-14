@@ -135,6 +135,8 @@ class JSONFile {
   }
 }
 
+const packageName = '@aeolun/workspaces';
+
 export default class WorkspacesPlugin extends Plugin {
   static isEnabled(options) {
     return fs.existsSync(ROOT_MANIFEST_PATH) && options !== false;
@@ -147,7 +149,7 @@ export default class WorkspacesPlugin extends Plugin {
       publish: {
         type: 'confirm',
         message: (context) => {
-          const { distTag, packagesToPublish } = context['@release-it-plugins/workspaces'];
+          const { distTag, packagesToPublish } = context[packageName];
 
           return this._formatPublishMessage(distTag, packagesToPublish);
         },
@@ -160,7 +162,7 @@ export default class WorkspacesPlugin extends Plugin {
       'publish-as-public': {
         type: 'confirm',
         message(context) {
-          const { currentPackage } = context['@release-it-plugins/workspaces'];
+          const { currentPackage } = context[packageName];
 
           return `Publishing ${currentPackage.name} failed because \`publishConfig.access\` is not set in its \`package.json\`.\n  Would you like to publish ${currentPackage.name} as a public package?`;
         },
@@ -308,7 +310,7 @@ export default class WorkspacesPlugin extends Plugin {
       });
     };
 
-    await this.step({ task, label: 'npm publish', prompt: 'publish' });
+    await this.step({ task, label: '(p)npm publish', prompt: 'publish' });
   }
 
   async afterRelease() {
