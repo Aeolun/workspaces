@@ -453,6 +453,7 @@ export default class WorkspacesPlugin extends Plugin {
     const accessArg = access ? ` --access ${access}` : '';
     const dryRunArg = this.config.isDryRun ? ' --dry-run' : '';
     const publishExecutable = hasPnpm() ? 'pnpm' : 'npm';
+    const noGitChecks = hasPnpm() ? ' --no-git-checks' : '';
 
     if (workspaceInfo.isPrivate) {
       this.debug(`${workspaceInfo.name}: Skip publish (package is private)`);
@@ -461,7 +462,7 @@ export default class WorkspacesPlugin extends Plugin {
 
     try {
       await this.exec(
-        `${publishExecutable} publish ./${workspaceInfo.relativeRoot} --tag ${tag}${accessArg}${otpArg}${dryRunArg}`,
+        `${publishExecutable} publish ./${workspaceInfo.relativeRoot} --tag ${tag}${noGitChecks}${accessArg}${otpArg}${dryRunArg}`,
         {
           options,
         }
