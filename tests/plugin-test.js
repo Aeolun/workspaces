@@ -1,16 +1,15 @@
 import { describe, beforeEach, afterEach, it, expect } from 'vitest';
-import fs from 'fs';
+import fs from 'node:fs';
 import _ from 'lodash';
 import { createTempDir } from 'broccoli-test-helper';
 import YAML from 'yaml';
 import { factory, runTasks } from 'release-it/test/util/index.js';
 import Plugin from '../index.js';
-
-const namespace = '@release-it-plugins/workspaces';
+import { packageName } from '../index.js';
 
 class TestPlugin extends Plugin {
-  constructor() {
-    super(...arguments);
+  constructor(...args) {
+    super(...args);
 
     this.operations = [];
     this.commands = [];
@@ -19,13 +18,13 @@ class TestPlugin extends Plugin {
   }
 }
 
-function buildPlugin(config = {}, _Plugin = TestPlugin) {
+async function buildPlugin(config = {}, _Plugin = TestPlugin) {
   const container = {};
   const commandResponses = {};
   const promptResponses = {};
 
-  const options = { [namespace]: config };
-  const plugin = factory(_Plugin, { container, namespace, options });
+  const options = { [packageName]: config };
+  const plugin = await factory(_Plugin, { container, namespace: packageName, options });
 
   plugin.log.log = (...args) => {
     plugin.logs.push(args);
@@ -42,13 +41,13 @@ function buildPlugin(config = {}, _Plugin = TestPlugin) {
   // when in CI mode (all tests are ran in CI mode) `Plugin.prototype.step`
   // goes through `spinner.show` (in normal mode it goes through `prompt.show`)
   plugin.spinner.show = (options) => {
-    let relativeRoot = plugin.context.currentPackage
+    const relativeRoot = plugin.context.currentPackage
       ? plugin.context.currentPackage.relativeRoot
       : '.';
     let response = promptResponses[relativeRoot] && promptResponses[relativeRoot][options.prompt];
 
     if (options.prompt) {
-      let prompt = plugin.prompt.prompts[plugin.namespace][options.prompt];
+      const prompt = plugin.prompt.prompts[plugin.namespace][options.prompt];
 
       // uses the same prompting logic from release-it itself:
       //
@@ -105,7 +104,9 @@ function buildPlugin(config = {}, _Plugin = TestPlugin) {
 
       if (typeof response === 'string') {
         return Promise.resolve(response);
-      } else if (typeof response === 'object' && response !== null && response.reject === true) {
+      }
+
+      if (typeof response === 'object' && response !== null && response.reject === true) {
         return Promise.reject(new Error(response.value));
       }
     }
@@ -119,7 +120,7 @@ function json(obj) {
 }
 
 describe('@release-it-plugins/workspaces', () => {
-  let ROOT = process.cwd();
+  const ROOT = process.cwd();
   let dir;
 
   function setupProject(workspaces, pkg = {}) {
@@ -153,7 +154,7 @@ describe('@release-it-plugins/workspaces', () => {
   }
 
   function setupWorkspace(_pkg) {
-    let pkg = Object.assign(
+    const pkg = Object.assign(
       {
         version: '0.0.0',
         license: 'MIT',
@@ -161,9 +162,9 @@ describe('@release-it-plugins/workspaces', () => {
       _pkg
     );
 
-    let hasScope = pkg.name.startsWith('@');
+    const hasScope = pkg.name.startsWith('@');
     if (hasScope) {
-      let [scope, name] = pkg.name.split('/');
+      const [scope, name] = pkg.name.split('/');
 
       dir.write({
         packages: {
@@ -186,7 +187,7 @@ describe('@release-it-plugins/workspaces', () => {
   }
 
   function readWorkspacePackage(name) {
-    let contents = dir.readText(`packages/${name}/package.json`);
+    const contents = dir.readText(`packages/${name}/package.json`);
 
     return JSON.parse(contents);
   }
@@ -211,7 +212,7 @@ describe('@release-it-plugins/workspaces', () => {
     });
 
     it('works', async () => {
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
       await runTasks(plugin);
 
@@ -282,11 +283,11 @@ describe('@release-it-plugins/workspaces', () => {
         },
       });
 
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
       await runTasks(plugin);
 
-      let pkg = JSON.parse(dir.readText('packages/baz/package.json'));
+      const pkg = JSON.parse(dir.readText('packages/baz/package.json'));
 
       expect(pkg).toEqual({
         name: 'baz',
@@ -322,13 +323,13 @@ describe('@release-it-plugins/workspaces', () => {
         },
       });
 
-      let plugin = buildPlugin({
+      const plugin = await buildPlugin({
         additionalManifests: { versionUpdates: ['dist/packages/*/package.json'] },
       });
 
       await runTasks(plugin);
 
-      let pkg = JSON.parse(dir.readText(`dist/packages/zorp/package.json`));
+      const pkg = JSON.parse(dir.readText('dist/packages/zorp/package.json'));
 
       expect(pkg).toEqual({
         name: 'whatever',
@@ -366,14 +367,14 @@ describe('@release-it-plugins/workspaces', () => {
         },
       });
 
-      let plugin = buildPlugin({
+      const plugin = await buildPlugin({
         additionalManifests: { dependencyUpdates: ['blueprints/*/files/package.json'] },
       });
 
       await runTasks(plugin);
 
-      ['derp', 'zorp'].forEach((name) => {
-        let pkg = JSON.parse(dir.readText(`blueprints/${name}/files/package.json`));
+      for (const name of ['derp', 'zorp']) {
+        const pkg = JSON.parse(dir.readText(`blueprints/${name}/files/package.json`));
 
         expect(pkg).toEqual({
           name: 'whatever',
@@ -383,7 +384,7 @@ describe('@release-it-plugins/workspaces', () => {
             bar: '^1.0.1',
           },
         });
-      });
+      }
     });
 
     it('prompts to ask if the package should be public when private package publishing fails', async () => {
@@ -391,7 +392,7 @@ describe('@release-it-plugins/workspaces', () => {
       setupWorkspace({ name: '@scope-name/bar' });
       setupWorkspace({ name: '@scope-name/foo' });
 
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
       plugin.commandResponses['npm publish ./packages/@scope-name/bar --tag latest'] = [
         {
@@ -458,14 +459,14 @@ describe('@release-it-plugins/workspaces', () => {
 
     it('can specify custom workspaces (overrides package.json settings)', async () => {
       function setupDistWorkspace(_pkg) {
-        let pkg = Object.assign(
+        const pkg = Object.assign(
           {
             version: '0.0.0',
             license: 'MIT',
           },
           _pkg
         );
-        let name = pkg.name;
+        const name = pkg.name;
 
         dir.write({
           dist: {
@@ -481,7 +482,7 @@ describe('@release-it-plugins/workspaces', () => {
       setupDistWorkspace({ name: 'qux' });
       setupDistWorkspace({ name: 'zorp' });
 
-      let plugin = buildPlugin({ workspaces: ['dist/packages/*'] });
+      const plugin = await buildPlugin({ workspaces: ['dist/packages/*'] });
 
       await runTasks(plugin);
 
@@ -528,7 +529,7 @@ describe('@release-it-plugins/workspaces', () => {
     });
 
     it('uses specified distTag', async () => {
-      let plugin = buildPlugin({ distTag: 'foo' });
+      const plugin = await buildPlugin({ distTag: 'foo' });
 
       await runTasks(plugin);
 
@@ -583,7 +584,7 @@ describe('@release-it-plugins/workspaces', () => {
         dependencies: { '@glimmer/interfaces': 'workspace:*' },
       });
 
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
       await runTasks(plugin);
 
@@ -602,7 +603,7 @@ describe('@release-it-plugins/workspaces', () => {
     });
 
     it('skips registry checks with skipChecks', async () => {
-      let plugin = buildPlugin({ skipChecks: true });
+      const plugin = await buildPlugin({ skipChecks: true });
 
       await runTasks(plugin);
 
@@ -640,7 +641,7 @@ describe('@release-it-plugins/workspaces', () => {
 
     it('uses custom registry', async () => {
       setupProject(['packages/*'], { publishConfig: { registry: 'http://my-custom-registry' } });
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
       await runTasks(plugin);
 
@@ -688,9 +689,9 @@ describe('@release-it-plugins/workspaces', () => {
 
     it('uses custom registry (scoped)', async () => {
       setupProject(['packages/*'], {
-        publishConfig: { ['@scope:registry']: 'http://my-custom-registry' },
+        publishConfig: { '@scope:registry': 'http://my-custom-registry' },
       });
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
       await runTasks(plugin);
 
@@ -737,7 +738,7 @@ describe('@release-it-plugins/workspaces', () => {
     });
 
     it('uses prerelease npm dist-tag', async () => {
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
       plugin.getIncrementedVersion = () => '1.0.0-beta.1';
 
@@ -786,7 +787,7 @@ describe('@release-it-plugins/workspaces', () => {
     });
 
     it('when publishing rejects requiring a one time password', async () => {
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
       plugin.commandResponses['packages/bar'] = {
         'npm publish . --tag latest': [
@@ -876,7 +877,7 @@ describe('@release-it-plugins/workspaces', () => {
         },
       });
 
-      let plugin = buildPlugin({
+      const plugin = await buildPlugin({
         workspaces: ['dist/@glimmer/*'],
         additionalManifests: {
           dependencyUpdates: ['packages/*/*/package.json'],
@@ -954,10 +955,10 @@ describe('@release-it-plugins/workspaces', () => {
   });
 
   describe('format publish output', () => {
-    it('correctly formats publish message for all packages', () => {
+    it('correctly formats publish message for all packages', async () => {
       setupProject(['packages/*']);
 
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
       expect(plugin._formatPublishMessage('latest', ['@foo/bar', '@foo/baz', '@foo/blarg']))
         .toMatchInlineSnapshot(`
@@ -972,7 +973,7 @@ describe('@release-it-plugins/workspaces', () => {
 
   describe('getWorkspaces', () => {
     function workspaceInfoFor(name) {
-      let pkg = readWorkspacePackage(name);
+      const pkg = readWorkspacePackage(name);
 
       return {
         name,
@@ -996,10 +997,10 @@ describe('@release-it-plugins/workspaces', () => {
       setupWorkspace({ name: 'bar' });
       setupWorkspace({ name: 'foo', private: true });
 
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
-      let workspaces1 = await plugin.getWorkspaces();
-      let workspaces2 = await plugin.getWorkspaces();
+      const workspaces1 = await plugin.getWorkspaces();
+      const workspaces2 = await plugin.getWorkspaces();
 
       expect(workspaces1).toStrictEqual(workspaces2);
     });
@@ -1010,10 +1011,10 @@ describe('@release-it-plugins/workspaces', () => {
       setupWorkspace({ name: 'bar' });
       setupWorkspace({ name: 'foo', private: true });
 
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
-      let workspaces1 = await plugin.getWorkspaces();
-      let workspaces2 = await plugin.getWorkspaces();
+      const workspaces1 = await plugin.getWorkspaces();
+      const workspaces2 = await plugin.getWorkspaces();
 
       expect(workspaces1).toStrictEqual(workspaces2);
     });
@@ -1024,9 +1025,9 @@ describe('@release-it-plugins/workspaces', () => {
       setupWorkspace({ name: 'bar' });
       setupWorkspace({ name: 'foo', private: true });
 
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
-      let workspaces = await plugin.getWorkspaces();
+      const workspaces = await plugin.getWorkspaces();
 
       expect(workspaces).toEqual([workspaceInfoFor('bar'), workspaceInfoFor('foo')]);
     });
@@ -1037,9 +1038,9 @@ describe('@release-it-plugins/workspaces', () => {
       setupWorkspace({ name: 'foo' });
       setupWorkspace({ name: 'bar' });
 
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
-      let workspaces = await plugin.getWorkspaces();
+      const workspaces = await plugin.getWorkspaces();
 
       expect(workspaces).toEqual([workspaceInfoFor('bar'), workspaceInfoFor('foo')]);
     });
@@ -1050,9 +1051,9 @@ describe('@release-it-plugins/workspaces', () => {
       setupWorkspace({ name: 'foo' });
       setupWorkspace({ name: 'bar' });
 
-      let plugin = buildPlugin();
+      const plugin = await buildPlugin();
 
-      let workspaces = await plugin.getWorkspaces();
+      const workspaces = await plugin.getWorkspaces();
 
       expect(workspaces).toEqual([workspaceInfoFor('bar'), workspaceInfoFor('foo')]);
     });
@@ -1076,9 +1077,9 @@ describe('@release-it-plugins/workspaces', () => {
           },
         });
 
-        let plugin = buildPlugin();
+        const plugin = await buildPlugin();
 
-        let [fooWorkspaceInfo] = await plugin.getWorkspaces();
+        const [fooWorkspaceInfo] = await plugin.getWorkspaces();
 
         fooWorkspaceInfo.pkgInfo.pkg.thing = true;
         fooWorkspaceInfo.pkgInfo.write();
@@ -1098,22 +1099,21 @@ describe('@release-it-plugins/workspaces', () => {
         dir.write({
           packages: {
             foo: {
-              'package.json':
-                JSON.stringify(
-                  {
-                    name: 'foo',
-                    version: '1.0.0',
-                  },
-                  null,
-                  2
-                ) + '\n',
+              'package.json': `${JSON.stringify(
+                {
+                  name: 'foo',
+                  version: '1.0.0',
+                },
+                null,
+                2
+              )}\n`,
             },
           },
         });
 
-        let plugin = buildPlugin();
+        const plugin = await buildPlugin();
 
-        let [fooWorkspaceInfo] = await plugin.getWorkspaces();
+        const [fooWorkspaceInfo] = await plugin.getWorkspaces();
 
         fooWorkspaceInfo.pkgInfo.pkg.thing = true;
         fooWorkspaceInfo.pkgInfo.write();
@@ -1131,11 +1131,11 @@ describe('@release-it-plugins/workspaces', () => {
   });
 
   describe('_buildReplacementDepencencyVersion', () => {
-    function updatesTo({ existing, new: newVersion, expected }) {
-      it(`updates ${existing} to ${newVersion}`, () => {
+    async function updatesTo({ existing, new: newVersion, expected }) {
+      it(`updates ${existing} to ${newVersion}`, async () => {
         setupProject(['packages/*']);
 
-        let plugin = buildPlugin();
+        const plugin = await buildPlugin();
 
         expect(plugin._buildReplacementDepencencyVersion(existing, newVersion)).toEqual(expected);
       });

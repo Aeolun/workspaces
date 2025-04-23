@@ -1,6 +1,6 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import semver from 'semver';
 import urlJoin from 'url-join';
 import walkSync from 'walk-sync';
@@ -35,14 +35,22 @@ async function rejectAfter(ms, error) {
 }
 
 function discoverWorkspaces() {
-  let { publishConfig, workspaces } = JSON.parse(fs.readFileSync(path.resolve(ROOT_MANIFEST_PATH)));
+  const { publishConfig, workspaces } = JSON.parse(
+    fs.readFileSync(path.resolve(ROOT_MANIFEST_PATH))
+  );
 
   if (!workspaces && hasPnpm()) {
-    ({ packages: workspaces } = YAML.parse(
-      fs.readFileSync(path.resolve(PNPM_WORKSPACE_PATH), { encoding: 'utf-8' })
-    ));
+    try {
+      const workspaceContent = fs.readFileSync(path.resolve(PNPM_WORKSPACE_PATH), {
+        encoding: 'utf-8',
+      });
+      const { packages: workspaces } = YAML.parse(workspaceContent);
+      return { publishConfig, workspaces };
+    } catch (error) {
+      return { publishConfig, workspaces: [] };
+    }
   }
-  return { publishConfig, workspaces };
+  return { publishConfig, workspaces: workspaces || [] };
 }
 
 function hasPnpm() {
@@ -52,7 +60,8 @@ function hasPnpm() {
 function resolveWorkspaces(workspaces) {
   if (Array.isArray(workspaces)) {
     return workspaces;
-  } else if (workspaces !== null && typeof workspaces === 'object') {
+  }
+  if (workspaces !== null && typeof workspaces === 'object') {
     return workspaces.packages;
   }
 
@@ -68,7 +77,8 @@ function parseVersion(raw) {
   const parsed = semver.parse(version);
 
   const isPreRelease = parsed.prerelease.length > 0;
-  const preReleaseId = isPreRelease && isNaN(parsed.prerelease[0]) ? parsed.prerelease[0] : null;
+  const preReleaseId =
+    isPreRelease && Number.isNaN(Number(parsed.prerelease[0])) ? parsed.prerelease[0] : null;
 
   return {
     version,
@@ -82,15 +92,15 @@ function findAdditionalManifests(root, manifestPaths) {
     return null;
   }
 
-  let packageJSONFiles = walkSync('.', {
+  const packageJSONFiles = walkSync('.', {
     globs: manifestPaths,
   });
 
-  let manifests = packageJSONFiles.map((file) => {
-    let absolutePath = path.join(root, file);
-    let pkgInfo = JSONFile.for(absolutePath);
+  const manifests = packageJSONFiles.map((file) => {
+    const absolutePath = path.join(root, file);
+    const pkgInfo = JSONFile.for(absolutePath);
 
-    let relativeRoot = path.dirname(file);
+    const relativeRoot = path.dirname(file);
 
     return {
       root: path.join(root, relativeRoot),
@@ -110,32 +120,32 @@ class JSONFile {
       return jsonFiles.get(path);
     }
 
-    let jsonFile = new this(path);
+    const jsonFile = new JSONFile(path);
     jsonFiles.set(path, jsonFile);
 
     return jsonFile;
   }
 
   constructor(filename) {
-    let contents = fs.readFileSync(filename, { encoding: 'utf8' });
+    const contents = fs.readFileSync(filename, { encoding: 'utf8' });
 
     this.filename = filename;
     this.pkg = JSON.parse(contents);
     this.lineEndings = detectNewline(contents);
     this.indent = detectIndent(contents).amount;
 
-    let trailingWhitespace = DETECT_TRAILING_WHITESPACE.exec(contents);
+    const trailingWhitespace = DETECT_TRAILING_WHITESPACE.exec(contents);
     this.trailingWhitespace = trailingWhitespace ? trailingWhitespace : '';
   }
 
   write() {
-    let contents = JSON.stringify(this.pkg, null, this.indent).replace(/\n/g, this.lineEndings);
+    const contents = JSON.stringify(this.pkg, null, this.indent).replace(/\n/g, this.lineEndings);
 
     fs.writeFileSync(this.filename, contents + this.trailingWhitespace, { encoding: 'utf8' });
   }
 }
 
-const packageName = '@aeolun/workspaces';
+export const packageName = '@aeolun/workspaces';
 
 export default class WorkspacesPlugin extends Plugin {
   static isEnabled(options) {
@@ -149,7 +159,8 @@ export default class WorkspacesPlugin extends Plugin {
       publish: {
         type: 'confirm',
         message: (context) => {
-          const { distTag, packagesToPublish } = context[packageName];
+          const distTag = context[packageName].distTag;
+          const packagesToPublish = context[packageName].packagesToPublish;
 
           return this._formatPublishMessage(distTag, packagesToPublish);
         },
@@ -157,7 +168,7 @@ export default class WorkspacesPlugin extends Plugin {
       },
       otp: {
         type: 'input',
-        message: () => `Please enter OTP for npm:`,
+        message: () => 'Please enter OTP for npm:',
       },
       'publish-as-public': {
         type: 'confirm',
@@ -208,7 +219,7 @@ export default class WorkspacesPlugin extends Plugin {
 
     if (!distTag) {
       const { isPreRelease, preReleaseId } = parseVersion(version);
-      distTag = this.options.distTag || isPreRelease ? preReleaseId : DEFAULT_TAG;
+      distTag = this.options.distTag || (isPreRelease ? preReleaseId : DEFAULT_TAG);
     }
     const workspaces = this.getWorkspaces();
 
@@ -226,8 +237,8 @@ export default class WorkspacesPlugin extends Plugin {
       const { isDryRun } = this.config;
 
       const updateVersion = (pkgInfo) => {
-        let { pkg } = pkgInfo;
-        let originalVersion = pkg.version;
+        const { pkg } = pkgInfo;
+        const originalVersion = pkg.version;
 
         if (originalVersion === version) {
           this.log.warn(`\tDid not update version (already at ${version}).`);
@@ -240,7 +251,7 @@ export default class WorkspacesPlugin extends Plugin {
         }
       };
 
-      workspaces.forEach(({ relativeRoot, pkgInfo }) => {
+      for (const { relativeRoot, pkgInfo } of workspaces) {
         this.log.exec(`Processing ${relativeRoot}/package.json:`);
 
         updateVersion(pkgInfo);
@@ -249,11 +260,11 @@ export default class WorkspacesPlugin extends Plugin {
         if (!isDryRun) {
           pkgInfo.write();
         }
-      });
+      }
 
       const additionalManifests = this.getAdditionalManifests();
       if (additionalManifests.dependencyUpdates) {
-        additionalManifests.dependencyUpdates.forEach(({ relativeRoot, pkgInfo }) => {
+        for (const { relativeRoot, pkgInfo } of additionalManifests.dependencyUpdates) {
           this.log.exec(
             `Processing additionManifest.dependencyUpdates for ${relativeRoot}/package.json:`
           );
@@ -263,11 +274,11 @@ export default class WorkspacesPlugin extends Plugin {
           if (!isDryRun) {
             pkgInfo.write();
           }
-        });
+        }
       }
 
       if (additionalManifests.versionUpdates) {
-        additionalManifests.versionUpdates.forEach(({ relativeRoot, pkgInfo }) => {
+        for (const { relativeRoot, pkgInfo } of additionalManifests.versionUpdates) {
           this.log.exec(
             `Processing additionManifest.versionUpdates for ${relativeRoot}/package.json:`
           );
@@ -276,7 +287,7 @@ export default class WorkspacesPlugin extends Plugin {
           if (!isDryRun) {
             pkgInfo.write();
           }
-        });
+        }
       }
     };
 
@@ -287,7 +298,7 @@ export default class WorkspacesPlugin extends Plugin {
      * running the install command for the package manager.
      */
     if (hasPnpm()) {
-      await this.exec(`pnpm install`);
+      await this.exec('pnpm install');
     }
 
     return this.spinner.show({ task, label: 'npm version' });
@@ -314,13 +325,13 @@ export default class WorkspacesPlugin extends Plugin {
   }
 
   async afterRelease() {
-    let workspaces = this.getWorkspaces();
+    const workspaces = this.getWorkspaces();
 
-    workspaces.forEach((workspaceInfo) => {
+    for (const workspaceInfo of workspaces) {
       if (workspaceInfo.isReleased) {
         this.log.log(`🔗 ${this.getReleaseUrl(workspaceInfo)}`);
       }
-    });
+    }
   }
 
   _buildReplacementDepencencyVersion(existingVersion, newVersion) {
@@ -355,10 +366,10 @@ export default class WorkspacesPlugin extends Plugin {
     const { pkg } = pkgInfo;
 
     const updateDependencies = (dependencyType) => {
-      let dependencies = pkg[dependencyType];
+      const dependencies = pkg[dependencyType];
 
       if (dependencies) {
-        for (let dependency in dependencies) {
+        for (const dependency in dependencies) {
           if (workspaces.find((w) => w.name === dependency)) {
             const existingVersion = dependencies[dependency];
             const replacementVersion = this._buildReplacementDepencencyVersion(
@@ -484,7 +495,8 @@ export default class WorkspacesPlugin extends Plugin {
         });
 
         return await this.publish({ tag, workspaceInfo, otp, access });
-      } else if (isScoped && /private packages/.test(err)) {
+      }
+      if (isScoped && /private packages/.test(err)) {
         let publishAsPublic = false;
 
         await this.step({
@@ -496,18 +508,17 @@ export default class WorkspacesPlugin extends Plugin {
 
         if (publishAsPublic) {
           return await this.publish({ tag, workspaceInfo, otp, access: 'public' });
-        } else {
-          this.log.warn(`${workspaceInfo.name} was not published.`);
         }
+        this.log.warn(`${workspaceInfo.name} was not published.`);
       }
       throw err;
     }
   }
 
   async eachWorkspace(action) {
-    let workspaces = this.getWorkspaces();
+    const workspaces = this.getWorkspaces();
 
-    for (let workspaceInfo of workspaces) {
+    for (const workspaceInfo of workspaces) {
       try {
         this.setContext({
           currentPackage: workspaceInfo,
@@ -523,9 +534,9 @@ export default class WorkspacesPlugin extends Plugin {
   }
 
   getAdditionalManifests() {
-    let root = this.getContext('root');
-    let additionalManifestsConfig = this.getContext('additionalManifests');
-    let additionalManifests = {
+    const root = this.getContext('root');
+    const additionalManifestsConfig = this.getContext('additionalManifests');
+    const additionalManifests = {
       dependencyUpdates: null,
       versionUpdates: null,
     };
@@ -555,18 +566,18 @@ export default class WorkspacesPlugin extends Plugin {
       return this._workspaces;
     }
 
-    let root = this.getContext('root');
-    let workspaces = this.getContext('workspaces');
+    const root = this.getContext('root');
+    const workspaces = this.getContext('workspaces');
 
-    let packageJSONFiles = walkSync('.', {
+    const packageJSONFiles = walkSync('.', {
       globs: workspaces.map((glob) => `${glob}/package.json`),
     });
 
     this._workspaces = packageJSONFiles.map((file) => {
-      let absolutePath = path.join(root, file);
-      let pkgInfo = JSONFile.for(absolutePath);
+      const absolutePath = path.join(root, file);
+      const pkgInfo = JSONFile.for(absolutePath);
 
-      let relativeRoot = path.dirname(file);
+      const relativeRoot = path.dirname(file);
 
       return {
         root: path.join(root, relativeRoot),
