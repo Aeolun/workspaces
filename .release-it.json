@@ -4,6 +4,9 @@
 		"requireCleanWorkingDir": false,
 		"commitArgs": ["--no-verify"]
 	},
+    "npm": {
+        "access": "public"
+    },
 	"plugins": {
 		"@release-it/conventional-changelog": {
 			"preset": {
