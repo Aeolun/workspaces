@@ -1,8 +1,13 @@
 {
 	"name": "@aeolun/workspaces",
-	"version": "4.2.5",
+	"version": "4.2.6",
 	"description": "release-it plugin for bumping and publishing workspaces",
-	"keywords": ["release", "release-it", "release-it-plugin", "plugin"],
+	"keywords": [
+		"release",
+		"release-it",
+		"release-it-plugin",
+		"plugin"
+	],
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/aeolun/workspaces"
@@ -10,11 +15,13 @@
 	"license": "MIT",
 	"authors": [
 		"Aeolun <aeolun@gmail.com>",
-    "Robert Jackson <me@rwjblue.com>"
+		"Robert Jackson <me@rwjblue.com>"
 	],
 	"type": "module",
 	"main": "index.js",
-	"files": ["index.js"],
+	"files": [
+		"index.js"
+	],
 	"scripts": {
 		"check": "biome check .",
 		"check:fix": "biome check --write .",

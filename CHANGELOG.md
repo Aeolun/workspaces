@@ -1,8 +1,10 @@
+# Changelog
 
+## 4.2.6 (2025-04-24)
 
+### Bug Fixes
 
-
-
+* add .npmrc ([41430d9](https://github.com/aeolun/workspaces/commit/41430d9092d726d4b9159c31af6fba2458ea3c34))
 
 ## v4.2.0 (2024-01-15)
 
@@ -243,5 +245,3 @@
 #### Committers: 2
 - Robert Jackson ([@rwjblue](https://github.com/rwjblue))
 - Steve Calvert ([@scalvert](https://github.com/scalvert))
-
-
