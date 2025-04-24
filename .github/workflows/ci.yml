@@ -57,17 +57,26 @@ jobs:
     name: 'release'
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     needs:
       - release-it-compat
       - node-compat
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
       - uses: pnpm/action-setup@v4
         with:
           version: latest
       - name: install dependencies
         run: pnpm install
-      - run: pnpm login && pnpm run release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: set git author for release to github bot
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Release the package
+        run: pnpm run release

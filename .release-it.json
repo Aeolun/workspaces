@@ -5,6 +5,7 @@
 		"commitArgs": ["--no-verify"]
 	},
     "npm": {
+        "skipChecks": true,
         "access": "public"
     },
 	"plugins": {
