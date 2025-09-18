@@ -106,6 +106,8 @@ function findAdditionalManifests(root, manifestPaths) {
 
 const jsonFiles = new Map();
 
+export const packageName = '@aeolun/workspaces';
+
 class JSONFile {
   static for(path) {
     if (jsonFiles.has(path)) {
@@ -149,7 +151,7 @@ export default class WorkspacesPlugin extends Plugin {
       publish: {
         type: 'confirm',
         message: (context) => {
-          const { distTag, packagesToPublish } = context['@release-it-plugins/workspaces'];
+          const { distTag, packagesToPublish } = context['@aeolun/workspaces'];
 
           return this._formatPublishMessage(distTag, packagesToPublish);
         },
@@ -162,7 +164,7 @@ export default class WorkspacesPlugin extends Plugin {
       'publish-as-public': {
         type: 'confirm',
         message(context) {
-          const { currentPackage } = context['@release-it-plugins/workspaces'];
+          const { currentPackage } = context['@aeolun/workspaces'];
 
           return `Publishing ${currentPackage.name} failed because \`publishConfig.access\` is not set in its \`package.json\`.\n  Would you like to publish ${currentPackage.name} as a public package?`;
         },

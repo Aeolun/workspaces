@@ -6,7 +6,7 @@ import YAML from 'yaml';
 import { factory, runTasks } from 'release-it/test/util/index.js';
 import Plugin from '../index.js';
 
-const namespace = '@release-it-plugins/workspaces';
+const namespace = '@aeolun/workspaces';
 
 class TestPlugin extends Plugin {
   constructor() {
@@ -124,7 +124,7 @@ function json(obj) {
   return JSON.stringify(obj, null, 2);
 }
 
-describe('@release-it-plugins/workspaces', () => {
+describe('@aeolun/workspaces', () => {
   let ROOT = process.cwd();
   let dir;
 

@@ -9,7 +9,7 @@ on:
       - '*'
 
 jobs:
-  build:
+  node-compat:
     name: 'Node ${{ matrix.node-version }}'
 
     runs-on: ubuntu-latest
@@ -19,13 +19,16 @@ jobs:
         node-version: [20.x, 22.x, 24.x]
 
     steps:
-      - uses: actions/checkout@v3.0.2
-      - uses: volta-cli/action@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
       - name: install dependencies
-        run: npm ci
-      - run: npm test
+        run: pnpm install
+      - run: pnpm test
 
   release-it-compat:
     name: 'release-it@${{ matrix.release-it-version }}'
@@ -38,9 +41,42 @@ jobs:
           ['^17.0.0', '^18.0.0', '^19.0.0']
 
     steps:
-      - uses: actions/checkout@v3.0.2
-      - uses: volta-cli/action@v4
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: install dependencies
-        run: npm ci
-      - run: npm install --saveDev release-it@${{ matrix.release-it-version }}
-      - run: npm test
+        run: pnpm install
+      - run: pnpm install --save-dev release-it@${{ matrix.release-it-version }}
+      - run: pnpm test
+
+  release:
+    name: 'release'
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    needs:
+      - release-it-compat
+      - node-compat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - name: install dependencies
+        run: pnpm install
+      - name: set git author for release to github bot
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Release the package
+        run: pnpm run release

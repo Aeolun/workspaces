@@ -1,0 +1,19 @@
+{
+	"git": {
+		"commitMessage": "chore: release v${version}",
+		"requireCleanWorkingDir": false,
+		"commitArgs": ["--no-verify"]
+	},
+    "npm": {
+        "skipChecks": true,
+        "access": "public"
+    },
+	"plugins": {
+		"@release-it/conventional-changelog": {
+			"preset": {
+				"name": "conventionalcommits"
+			},
+			"infile": "CHANGELOG.md"
+		}
+	}
+}
