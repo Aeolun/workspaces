@@ -46,10 +46,14 @@ npm run release
 ## Release Process
 
 The project uses its own plugin for releases:
-- Configured in `package.json` under `release-it` key
-- Uses conventional changelog plugin
+- Configured in `.release-it.json` with conventional changelog plugin
+- Uses conventional commit messages for automatic version bumping:
+  - `fix:` commits trigger **patch** versions (e.g., 1.0.0 → 1.0.1)
+  - `feat:` commits trigger **minor** versions (e.g., 1.0.0 → 1.1.0)
+  - `BREAKING CHANGE:` in commit body triggers **major** versions (e.g., 1.0.0 → 2.0.0)
 - Git tags follow `v${version}` pattern
 - GitHub releases are disabled (`"github": false`)
+- Automated release via GitHub Actions on push to master
 
 ## Dependencies and Package Management
 
