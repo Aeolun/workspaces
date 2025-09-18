@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.2.0 (2025-09-18)
+
+### Features
+
+* add interactive prompt for workspace version updates ([e9566ef](https://github.com/aeolun/workspaces/commit/e9566efbb91b5821d78ef6c14ac18ee23daf4492))
+
 ## 5.1.0 (2025-09-18)
 
 ### Features
