@@ -1,13 +1,10 @@
+# Changelog
 
+## 5.1.0 (2025-09-18)
 
+### Features
 
-
-
-
-
-
-
-
+* upgrade to upstream v5.0.3 with [@aeolun](https://github.com/aeolun) package name ([f3b37d6](https://github.com/aeolun/workspaces/commit/f3b37d625dc7dc4c81c6e274908acd6f88a3f586))
 
 ## v5.0.3 (2025-06-20)
 
@@ -300,5 +297,3 @@
 #### Committers: 2
 - Robert Jackson ([@rwjblue](https://github.com/rwjblue))
 - Steve Calvert ([@scalvert](https://github.com/scalvert))
-
-
