@@ -169,6 +169,16 @@ export default class WorkspacesPlugin extends Plugin {
           return `Publishing ${currentPackage.name} failed because \`publishConfig.access\` is not set in its \`package.json\`.\n  Would you like to publish ${currentPackage.name} as a public package?`;
         },
       },
+      'update-versions': {
+        type: 'confirm',
+        message: (context) => {
+          const { version, workspacesToUpdate } = context['@aeolun/workspaces'];
+          return `Update workspace package versions to ${version}?\n  Workspaces: ${workspacesToUpdate.join(
+            ', '
+          )}`;
+        },
+        default: true,
+      },
     });
 
     const { publishConfig, workspaces } = discoverWorkspaces();
@@ -224,9 +234,12 @@ export default class WorkspacesPlugin extends Plugin {
       .filter((w) => !w.isPrivate)
       .map((workspace) => workspace.name);
 
+    const workspacesToUpdate = workspaces.map((workspace) => workspace.relativeRoot);
+
     this.setContext({
       distTag,
       packagesToPublish,
+      workspacesToUpdate,
       version,
     });
 
@@ -298,7 +311,7 @@ export default class WorkspacesPlugin extends Plugin {
       }
     };
 
-    return this.spinner.show({ task, label: 'npm version' });
+    return this.step({ task, label: 'Update workspace versions', prompt: 'update-versions' });
   }
 
   async release() {

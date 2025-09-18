@@ -4,7 +4,8 @@
       "Bash(git remote add:*)",
       "Bash(git fetch:*)",
       "Bash(git rebase:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(pnpm test:*)"
     ],
     "deny": [],
     "ask": []
