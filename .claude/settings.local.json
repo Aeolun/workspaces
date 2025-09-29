@@ -8,7 +8,8 @@
 			"Bash(pnpm test:*)",
 			"WebFetch(domain:github.com)",
 			"Read(//Users/bart.riepe/Projects/release-it/**)",
-			"Read(//Users/bart.riepe/Projects/**)"
+			"Read(//Users/bart.riepe/Projects/**)",
+			"Bash(npm run test:vitest:*)"
 		],
 		"deny": [],
 		"ask": []

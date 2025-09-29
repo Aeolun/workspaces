@@ -271,7 +271,6 @@ export default class WorkspacesPlugin extends Plugin {
 		const messages = [
 			"Workspaces to process:",
 			...workspaces.map((w) => `  ${w.relativeRoot}`),
-			"",
 		];
 
 		this.log.log(messages.join("\n"));
