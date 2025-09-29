@@ -1,13 +1,16 @@
 {
-  "permissions": {
-    "allow": [
-      "Bash(git remote add:*)",
-      "Bash(git fetch:*)",
-      "Bash(git rebase:*)",
-      "Bash(git add:*)",
-      "Bash(pnpm test:*)"
-    ],
-    "deny": [],
-    "ask": []
-  }
+	"permissions": {
+		"allow": [
+			"Bash(git remote add:*)",
+			"Bash(git fetch:*)",
+			"Bash(git rebase:*)",
+			"Bash(git add:*)",
+			"Bash(pnpm test:*)",
+			"WebFetch(domain:github.com)",
+			"Read(//Users/bart.riepe/Projects/release-it/**)",
+			"Read(//Users/bart.riepe/Projects/**)"
+		],
+		"deny": [],
+		"ask": []
+	}
 }

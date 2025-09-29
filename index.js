@@ -1,15 +1,15 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import semver from 'semver';
-import urlJoin from 'url-join';
-import walkSync from 'walk-sync';
-import detectNewline from 'detect-newline';
-import detectIndent from 'detect-indent';
-import { Plugin } from 'release-it';
-import validatePeerDependencies from 'validate-peer-dependencies';
-import YAML from 'yaml';
-import { execaCommand } from 'execa';
+import detectIndent from "detect-indent";
+import detectNewline from "detect-newline";
+import { execaCommand } from "execa";
+import fs from "fs";
+import path from "path";
+import { Plugin } from "release-it";
+import semver from "semver";
+import { fileURLToPath } from "url";
+import urlJoin from "url-join";
+import validatePeerDependencies from "validate-peer-dependencies";
+import walkSync from "walk-sync";
+import YAML from "yaml";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,602 +17,712 @@ validatePeerDependencies(__dirname);
 
 const options = { write: false };
 
-const ROOT_MANIFEST_PATH = './package.json';
-const PNPM_WORKSPACE_PATH = './pnpm-workspace.yaml';
+// Helper function to dynamically import conventional changelog plugin
+async function loadConventionalChangelogPlugin() {
+	try {
+		const module = await import("@release-it/conventional-changelog");
+		return module.default;
+	} catch (_error) {
+		return null;
+	}
+}
+
+const ROOT_MANIFEST_PATH = "./package.json";
+const PNPM_WORKSPACE_PATH = "./pnpm-workspace.yaml";
 const REGISTRY_TIMEOUT = 10000;
-const DEFAULT_TAG = 'latest';
-const NPM_BASE_URL = 'https://www.npmjs.com';
-const NPM_DEFAULT_REGISTRY = 'https://registry.npmjs.org';
+const DEFAULT_TAG = "latest";
+const NPM_BASE_URL = "https://www.npmjs.com";
+const NPM_DEFAULT_REGISTRY = "https://registry.npmjs.org";
 const DETECT_TRAILING_WHITESPACE = /\s+$/;
 
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function rejectAfter(ms, error) {
-  await sleep(ms);
+	await sleep(ms);
 
-  throw error;
+	throw error;
 }
 
 function discoverWorkspaces() {
-  let { publishConfig, workspaces } = JSON.parse(fs.readFileSync(path.resolve(ROOT_MANIFEST_PATH)));
+	let { publishConfig, workspaces } = JSON.parse(
+		fs.readFileSync(path.resolve(ROOT_MANIFEST_PATH)),
+	);
 
-  if (!workspaces && hasPnpm()) {
-    ({ packages: workspaces } = YAML.parse(
-      fs.readFileSync(path.resolve(PNPM_WORKSPACE_PATH), { encoding: 'utf-8' })
-    ));
-  }
+	if (!workspaces && hasPnpm()) {
+		({ packages: workspaces } = YAML.parse(
+			fs.readFileSync(path.resolve(PNPM_WORKSPACE_PATH), { encoding: "utf-8" }),
+		));
+	}
 
-  return { publishConfig, workspaces };
+	return { publishConfig, workspaces };
 }
 
 function hasPnpm() {
-  return fs.existsSync('./pnpm-lock.yaml') || fs.existsSync(PNPM_WORKSPACE_PATH);
+	return (
+		fs.existsSync("./pnpm-lock.yaml") || fs.existsSync(PNPM_WORKSPACE_PATH)
+	);
 }
 
 function resolveWorkspaces(workspaces) {
-  if (Array.isArray(workspaces)) {
-    return workspaces;
-  } else if (workspaces !== null && typeof workspaces === 'object') {
-    return workspaces.packages;
-  }
+	if (Array.isArray(workspaces)) {
+		return workspaces;
+	} else if (workspaces !== null && typeof workspaces === "object") {
+		return workspaces.packages;
+	}
 
-  throw new Error(
-    "This package doesn't use workspaces. (package.json doesn't contain a `workspaces` property)"
-  );
+	throw new Error(
+		"This package doesn't use workspaces. (package.json doesn't contain a `workspaces` property)",
+	);
 }
 
 function parseVersion(raw) {
-  if (!raw) return { version: null, isPreRelease: false, preReleaseId: null };
+	if (!raw) return { version: null, isPreRelease: false, preReleaseId: null };
 
-  const version = semver.valid(raw) ? raw : semver.coerce(raw);
-  const parsed = semver.parse(version);
+	const version = semver.valid(raw) ? raw : semver.coerce(raw);
+	const parsed = semver.parse(version);
 
-  const isPreRelease = parsed.prerelease.length > 0;
-  const preReleaseId = isPreRelease && isNaN(parsed.prerelease[0]) ? parsed.prerelease[0] : null;
+	const isPreRelease = parsed.prerelease.length > 0;
+	const preReleaseId =
+		isPreRelease && isNaN(parsed.prerelease[0]) ? parsed.prerelease[0] : null;
 
-  return {
-    version,
-    isPreRelease,
-    preReleaseId,
-  };
+	return {
+		version,
+		isPreRelease,
+		preReleaseId,
+	};
 }
 
 function findAdditionalManifests(root, manifestPaths) {
-  if (!Array.isArray(manifestPaths)) {
-    return null;
-  }
+	if (!Array.isArray(manifestPaths)) {
+		return null;
+	}
 
-  let packageJSONFiles = walkSync('.', {
-    globs: manifestPaths,
-  });
+	let packageJSONFiles = walkSync(".", {
+		globs: manifestPaths,
+	});
 
-  let manifests = packageJSONFiles.map((file) => {
-    let absolutePath = path.join(root, file);
-    let pkgInfo = JSONFile.for(absolutePath);
+	let manifests = packageJSONFiles.map((file) => {
+		let absolutePath = path.join(root, file);
+		let pkgInfo = JSONFile.for(absolutePath);
 
-    let relativeRoot = path.dirname(file);
+		let relativeRoot = path.dirname(file);
 
-    return {
-      root: path.join(root, relativeRoot),
-      relativeRoot,
-      pkgInfo,
-    };
-  });
+		return {
+			root: path.join(root, relativeRoot),
+			relativeRoot,
+			pkgInfo,
+		};
+	});
 
-  return manifests;
+	return manifests;
 }
 
 const jsonFiles = new Map();
 
-export const packageName = '@aeolun/workspaces';
+export const packageName = "@aeolun/workspaces";
 
 class JSONFile {
-  static for(path) {
-    if (jsonFiles.has(path)) {
-      return jsonFiles.get(path);
-    }
+	static for(path) {
+		if (jsonFiles.has(path)) {
+			return jsonFiles.get(path);
+		}
 
-    let jsonFile = new this(path);
-    jsonFiles.set(path, jsonFile);
+		let jsonFile = new this(path);
+		jsonFiles.set(path, jsonFile);
 
-    return jsonFile;
-  }
+		return jsonFile;
+	}
 
-  constructor(filename) {
-    let contents = fs.readFileSync(filename, { encoding: 'utf8' });
+	constructor(filename) {
+		let contents = fs.readFileSync(filename, { encoding: "utf8" });
 
-    this.filename = filename;
-    this.pkg = JSON.parse(contents);
-    this.lineEndings = detectNewline(contents);
-    this.indent = detectIndent(contents).amount;
+		this.filename = filename;
+		this.pkg = JSON.parse(contents);
+		this.lineEndings = detectNewline(contents);
+		this.indent = detectIndent(contents).amount;
 
-    let trailingWhitespace = DETECT_TRAILING_WHITESPACE.exec(contents);
-    this.trailingWhitespace = trailingWhitespace ? trailingWhitespace : '';
-  }
+		let trailingWhitespace = DETECT_TRAILING_WHITESPACE.exec(contents);
+		this.trailingWhitespace = trailingWhitespace ? trailingWhitespace : "";
+	}
 
-  write() {
-    let contents = JSON.stringify(this.pkg, null, this.indent).replace(/\n/g, this.lineEndings);
+	write() {
+		let contents = JSON.stringify(this.pkg, null, this.indent).replace(
+			/\n/g,
+			this.lineEndings,
+		);
 
-    fs.writeFileSync(this.filename, contents + this.trailingWhitespace, { encoding: 'utf8' });
-  }
+		fs.writeFileSync(this.filename, contents + this.trailingWhitespace, {
+			encoding: "utf8",
+		});
+	}
 }
 
 export default class WorkspacesPlugin extends Plugin {
-  static isEnabled(options) {
-    return fs.existsSync(ROOT_MANIFEST_PATH) && options !== false;
-  }
-
-  constructor(...args) {
-    super(...args);
-
-    this.registerPrompts({
-      publish: {
-        type: 'confirm',
-        message: (context) => {
-          const { distTag, packagesToPublish } = context['@aeolun/workspaces'];
-
-          return this._formatPublishMessage(distTag, packagesToPublish);
-        },
-        default: true,
-      },
-      otp: {
-        type: 'input',
-        message: () => `Please enter OTP for ${this.isPNPM() ? 'pnpm' : 'npm'}:`,
-      },
-      'publish-as-public': {
-        type: 'confirm',
-        message(context) {
-          const { currentPackage } = context['@aeolun/workspaces'];
-
-          return `Publishing ${currentPackage.name} failed because \`publishConfig.access\` is not set in its \`package.json\`.\n  Would you like to publish ${currentPackage.name} as a public package?`;
-        },
-      },
-      'update-versions': {
-        type: 'confirm',
-        message: (context) => {
-          const { version, workspacesToUpdate } = context['@aeolun/workspaces'];
-          return `Update workspace package versions to ${version}?\n  Workspaces: ${workspacesToUpdate.join(
-            ', '
-          )}`;
-        },
-        default: true,
-      },
-    });
-
-    const { publishConfig, workspaces } = discoverWorkspaces();
-
-    this.setContext({
-      publishConfig,
-      workspaces: this.options.workspaces || resolveWorkspaces(workspaces),
-      root: process.cwd(),
-    });
-  }
-
-  async init() {
-    if (this.options.skipChecks) return;
-
-    const validations = Promise.all([this.isRegistryUp(), this.isAuthenticated()]);
-
-    await Promise.race([
-      validations,
-      rejectAfter(REGISTRY_TIMEOUT, new Error(`Timed out after ${REGISTRY_TIMEOUT}ms.`)),
-    ]);
-
-    const [isRegistryUp, isAuthenticated] = await validations;
-
-    if (!isRegistryUp) {
-      throw new Error(`Unable to reach npm registry (timed out after ${REGISTRY_TIMEOUT}ms).`);
-    }
-
-    if (!isAuthenticated) {
-      const program = this.isPNPM() ? 'pnpm' : 'npm';
-      throw new Error(
-        `Not authenticated with ${program}. Please \`${program} login\` and try again.`
-      );
-    }
-  }
-
-  beforeBump() {
-    const workspaces = this.getWorkspaces();
-    const messages = ['Workspaces to process:', ...workspaces.map((w) => `  ${w.relativeRoot}`), ''];
-
-    this.log.log(messages.join('\n'));
-  }
-
-  async bump(version) {
-    let { distTag } = this.options;
-
-    if (!distTag) {
-      const { isPreRelease, preReleaseId } = parseVersion(version);
-      distTag = this.options.distTag || isPreRelease ? preReleaseId : DEFAULT_TAG;
-    }
-    const workspaces = this.getWorkspaces();
-
-    const packagesToPublish = workspaces
-      .filter((w) => !w.isPrivate)
-      .map((workspace) => workspace.name);
-
-    const workspacesToUpdate = workspaces.map((workspace) => workspace.relativeRoot);
-
-    this.setContext({
-      distTag,
-      packagesToPublish,
-      workspacesToUpdate,
-      version,
-    });
-
-    const task = async () => {
-      const { isDryRun } = this.config;
-
-      const updateVersion = (pkgInfo) => {
-        let { pkg } = pkgInfo;
-        let originalVersion = pkg.version;
-
-        if (originalVersion === version) {
-          this.log.warn(`\tDid not update version (already at ${version}).`);
-        }
-
-        this.log.exec(`\tversion: -> ${version} (from ${originalVersion})`);
-
-        if (!isDryRun) {
-          pkg.version = version;
-        }
-      };
-
-      workspaces.forEach(({ relativeRoot, pkgInfo }) => {
-        this.log.exec(`Processing ${relativeRoot}/package.json:`);
-
-        updateVersion(pkgInfo);
-        this._updateDependencies(pkgInfo, version);
-
-        if (!isDryRun) {
-          pkgInfo.write();
-        }
-      });
-
-      const additionalManifests = this.getAdditionalManifests();
-      if (additionalManifests.dependencyUpdates) {
-        additionalManifests.dependencyUpdates.forEach(({ relativeRoot, pkgInfo }) => {
-          this.log.exec(
-            `Processing additionManifest.dependencyUpdates for ${relativeRoot}/package.json:`
-          );
-
-          this._updateDependencies(pkgInfo, version);
-
-          if (!isDryRun) {
-            pkgInfo.write();
-          }
-        });
-      }
-
-      if (additionalManifests.versionUpdates) {
-        additionalManifests.versionUpdates.forEach(({ relativeRoot, pkgInfo }) => {
-          this.log.exec(
-            `Processing additionManifest.versionUpdates for ${relativeRoot}/package.json:`
-          );
-          updateVersion(pkgInfo);
-
-          if (!isDryRun) {
-            pkgInfo.write();
-          }
-        });
-      }
-
-      /**
-       * In workflows where publishing is handled on C.I.,
-       * and not be release-it, the environment will often require
-       * that the lockfile be updated -- this is usually done by
-       * running the install command for the package manager.
-       */
-      if (hasPnpm()) {
-        await this.exec(`pnpm install`);
-      }
-    };
-
-    return this.step({ task, label: 'Update workspace versions', prompt: 'update-versions' });
-  }
-
-  async release() {
-    if (this.options.publish === false) return;
-
-    // creating a stable object that is shared across all package publishes
-    // this ensures that we don't accidentally prompt multiple times (e.g. once
-    // per package) due to loosing the otp value after each `this.publish` call
-    const otp = {
-      value: this.options.otp,
-    };
-
-    const tag = this.getContext('distTag');
-    const task = async () => {
-      await this.eachWorkspace(async (workspaceInfo) => {
-        await this.publish({ tag, workspaceInfo, otp });
-      });
-    };
-
-    await this.step({ task, label: 'npm publish', prompt: 'publish' });
-  }
-
-  async afterRelease() {
-    let workspaces = this.getWorkspaces();
-
-    workspaces.forEach((workspaceInfo) => {
-      if (workspaceInfo.isReleased) {
-        this.log.log(`🔗 ${this.getReleaseUrl(workspaceInfo)}`);
-      }
-    });
-  }
-
-  _buildReplacementDepencencyVersion(existingVersion, newVersion) {
-    let prefix = '';
-    let range = existingVersion;
-    let suffix = newVersion;
-
-    // preserve workspace protocol prefix,
-    // tools that use this replace with a real version during the publish the process
-    if (existingVersion.startsWith('workspace:')) {
-      prefix = 'workspace:';
-      range = existingVersion.slice(prefix.length);
-      suffix = range.length > 1 ? newVersion : '';
-    }
-
-    // capture any leading characters up to the first digit
-    const operator = range.match(/^[^0-9]*/)[0];
-    if ('*' === range) {
-      return `${prefix}*`;
-    }
-
-    return `${prefix}${operator}${suffix}`;
-  }
-
-  _updateDependencies(pkgInfo, newVersion) {
-    const { isDryRun } = this.config;
-    const workspaces = this.getWorkspaces();
-    const { pkg } = pkgInfo;
-
-    const updateDependencies = (dependencyType) => {
-      let dependencies = pkg[dependencyType];
-
-      if (dependencies) {
-        for (let dependency in dependencies) {
-          if (workspaces.find((w) => w.name === dependency)) {
-            const existingVersion = dependencies[dependency];
-            const replacementVersion = this._buildReplacementDepencencyVersion(
-              existingVersion,
-              newVersion
-            );
-
-            this.log.exec(
-              `\t${dependencyType}: \`${dependency}\` -> ${replacementVersion} (from ${existingVersion})`
-            );
-
-            if (!isDryRun) {
-              dependencies[dependency] = replacementVersion;
-            }
-          }
-        }
-      }
-    };
-
-    updateDependencies('dependencies');
-    updateDependencies('devDependencies');
-    updateDependencies('optionalDependencies');
-    updateDependencies('peerDependencies');
-  }
-
-  _formatPublishMessage(distTag, packageNames) {
-    const messages = [
-      'Preparing to publish:',
-      ...packageNames.map((name) => `    ${name}${distTag === 'latest' ? '' : `@${distTag}`}`),
-      '  Publish to npm:',
-    ];
-
-    return messages.join('\n');
-  }
-
-  async isRegistryUp() {
-    const registry = this.getRegistry();
-    const program = this.isPNPM() ? 'pnpm' : 'npm';
-
-    try {
-      await this.exec(`${program} ping --registry ${registry}`);
-
-      return true;
-    } catch (error) {
-      if (/code E40[04]|404.*(ping not found|No content for path)/.test(error)) {
-        this.log.warn(`Ignoring unsupported \`${program} ping\` command response.`);
-        return true;
-      }
-      return false;
-    }
-  }
-
-  async isAuthenticated() {
-    const registry = this.getRegistry();
-    const program = this.isPNPM() ? 'pnpm' : 'npm';
-
-    try {
-      await this.exec(`${program} whoami --registry ${registry}`);
-      return true;
-    } catch (error) {
-      this.debug(error);
-
-      if (/code E40[04]/.test(error)) {
-        this.log.warn(`Ignoring unsupported \`${program} whoami\` command response.`);
-        return true;
-      }
-
-      return false;
-    }
-  }
-
-  getReleaseUrl(workspaceInfo) {
-    const registry = this.getRegistry();
-    const baseUrl = registry !== NPM_DEFAULT_REGISTRY ? registry : NPM_BASE_URL;
-
-    return urlJoin(baseUrl, 'package', workspaceInfo.name);
-  }
-
-  getRegistry() {
-    const { publishConfig } = this.getContext();
-    const registries = publishConfig
-      ? publishConfig.registry
-        ? [publishConfig.registry]
-        : Object.keys(publishConfig)
-            .filter((key) => key.endsWith('registry'))
-            .map((key) => publishConfig[key])
-      : [];
-    return registries[0] || NPM_DEFAULT_REGISTRY;
-  }
-
-  isPNPM() {
-    return hasPnpm();
-  }
-
-  async publish({ tag, workspaceInfo, otp, access } = {}) {
-    const isScoped = workspaceInfo.name.startsWith('@');
-
-    const pathToWorkspace = `./${workspaceInfo.relativeRoot}`;
-    const publishCommand = this.getContext().publishCommand;
-
-    const args = [pathToWorkspace, '--tag', tag];
-    if (access) args.push('--access', access);
-    if (otp.value) args.push('--otp', otp.value);
-    if (this.config.isDryRun) args.push('--dry-run');
-
-    if (workspaceInfo.isPrivate) {
-      this.debug(`${workspaceInfo.name}: Skip publish (package is private)`);
-      return;
-    }
-
-    try {
-      if (!publishCommand) {
-        const program = this.isPNPM() ? 'pnpm' : 'npm';
-        const command = `${program} publish ${args.join(' ')}`;
-        await this.exec(command, { options });
-      } else {
-        const env = {
-          RELEASE_IT_WORKSPACES_PATH_TO_WORKSPACE: pathToWorkspace,
-          RELEASE_IT_WORKSPACES_TAG: tag ?? '',
-          RELEASE_IT_WORKSPACES_ACCESS: access ?? '',
-          RELEASE_IT_WORKSPACES_OTP: otp.value ?? '',
-          RELEASE_IT_WORKSPACES_DRY_RUN: String(this.config.isDryRun),
-          ...process.env,
-        };
-        await execaCommand(publishCommand, { env, stdio: 'inherit' });
-      }
-
-      workspaceInfo.isReleased = true;
-    } catch (err) {
-      this.debug(err);
-      if (/one-time pass/.test(err)) {
-        if (otp.value != null) {
-          this.log.warn('The provided OTP is incorrect or has expired.');
-        }
-
-        await this.step({
-          prompt: 'otp',
-          task(newOtp) {
-            otp.value = newOtp;
-          },
-        });
-
-        return await this.publish({ tag, workspaceInfo, otp, access });
-      } else if (isScoped && /private packages/.test(err)) {
-        let publishAsPublic = false;
-
-        await this.step({
-          prompt: 'publish-as-public',
-          task(value) {
-            publishAsPublic = value;
-          },
-        });
-
-        if (publishAsPublic) {
-          return await this.publish({ tag, workspaceInfo, otp, access: 'public' });
-        } else {
-          this.log.warn(`${workspaceInfo.name} was not published.`);
-        }
-      }
-      throw err;
-    }
-  }
-
-  async eachWorkspace(action) {
-    let workspaces = this.getWorkspaces();
-
-    for (let workspaceInfo of workspaces) {
-      try {
-        this.setContext({
-          currentPackage: workspaceInfo,
-        });
-
-        await action(workspaceInfo);
-      } finally {
-        this.setContext({
-          currentPackage: null,
-        });
-      }
-    }
-  }
-
-  getAdditionalManifests() {
-    let root = this.getContext('root');
-    let additionalManifestsConfig = this.getContext('additionalManifests');
-    let additionalManifests = {
-      dependencyUpdates: null,
-      versionUpdates: null,
-    };
-
-    let versionUpdates = ['package.json'];
-
-    if (additionalManifestsConfig) {
-      additionalManifests.dependencyUpdates = findAdditionalManifests(
-        root,
-        additionalManifestsConfig.dependencyUpdates
-      );
-
-      if (additionalManifestsConfig.versionUpdates) {
-        versionUpdates = additionalManifestsConfig.versionUpdates;
-      }
-    }
-
-    additionalManifests.versionUpdates = findAdditionalManifests(root, versionUpdates);
-
-    this._additionalManifests = additionalManifests;
-
-    return this._additionalManifests;
-  }
-
-  getWorkspaces() {
-    if (this._workspaces) {
-      return this._workspaces;
-    }
-
-    let root = this.getContext('root');
-    let workspaces = this.getContext('workspaces');
-
-    let packageJSONFiles = walkSync('.', {
-      globs: workspaces.map((glob) => `${glob}/package.json`),
-    });
-
-    this._workspaces = packageJSONFiles.map((file) => {
-      let absolutePath = path.join(root, file);
-      let pkgInfo = JSONFile.for(absolutePath);
-
-      let relativeRoot = path.dirname(file);
-
-      return {
-        root: path.join(root, relativeRoot),
-        relativeRoot,
-        name: pkgInfo.pkg.name,
-        isPrivate: !!pkgInfo.pkg.private,
-        isReleased: false,
-        pkgInfo,
-      };
-    });
-
-    return this._workspaces;
-  }
+	static isEnabled(options) {
+		return fs.existsSync(ROOT_MANIFEST_PATH) && options !== false;
+	}
+
+	constructor(...args) {
+		super(...args);
+
+		// Initialize conventional changelog plugin if changelog options are provided
+		this.changelogPlugin = null;
+		this.changelogOptions = this.options.changelog;
+
+		this.registerPrompts({
+			publish: {
+				type: "confirm",
+				message: (context) => {
+					const { distTag, packagesToPublish } = context["@aeolun/workspaces"];
+
+					return this._formatPublishMessage(distTag, packagesToPublish);
+				},
+				default: true,
+			},
+			otp: {
+				type: "input",
+				message: () =>
+					`Please enter OTP for ${this.isPNPM() ? "pnpm" : "npm"}:`,
+			},
+			"publish-as-public": {
+				type: "confirm",
+				message(context) {
+					const { currentPackage } = context["@aeolun/workspaces"];
+
+					return `Publishing ${currentPackage.name} failed because \`publishConfig.access\` is not set in its \`package.json\`.\n  Would you like to publish ${currentPackage.name} as a public package?`;
+				},
+			},
+			"update-versions": {
+				type: "confirm",
+				message: (context) => {
+					const { version, workspacesToUpdate } = context["@aeolun/workspaces"];
+					const changelogNote = this.options.changelog
+						? "\n  This will also update CHANGELOG.md"
+						: "";
+					return `Update workspace package versions to ${version}?\n  Workspaces: ${workspacesToUpdate.join(
+						", ",
+					)}${changelogNote}`;
+				},
+				default: true,
+			},
+		});
+
+		const { publishConfig, workspaces } = discoverWorkspaces();
+
+		this.setContext({
+			publishConfig,
+			workspaces: this.options.workspaces || resolveWorkspaces(workspaces),
+			root: process.cwd(),
+		});
+	}
+
+	async init() {
+		// Initialize conventional changelog plugin if configured
+		if (this.changelogOptions) {
+			const ConventionalChangelogPlugin =
+				await loadConventionalChangelogPlugin();
+			if (ConventionalChangelogPlugin) {
+				this.changelogPlugin = new ConventionalChangelogPlugin(
+					this.changelogOptions,
+					this.container,
+				);
+			} else {
+				this.log.warn(
+					"Changelog integration requires @release-it/conventional-changelog to be installed. Run: npm install --save-dev @release-it/conventional-changelog",
+				);
+			}
+		}
+
+		if (this.options.skipChecks) return;
+
+		const validations = Promise.all([
+			this.isRegistryUp(),
+			this.isAuthenticated(),
+		]);
+
+		await Promise.race([
+			validations,
+			rejectAfter(
+				REGISTRY_TIMEOUT,
+				new Error(`Timed out after ${REGISTRY_TIMEOUT}ms.`),
+			),
+		]);
+
+		const [isRegistryUp, isAuthenticated] = await validations;
+
+		if (!isRegistryUp) {
+			throw new Error(
+				`Unable to reach npm registry (timed out after ${REGISTRY_TIMEOUT}ms).`,
+			);
+		}
+
+		if (!isAuthenticated) {
+			const program = this.isPNPM() ? "pnpm" : "npm";
+			throw new Error(
+				`Not authenticated with ${program}. Please \`${program} login\` and try again.`,
+			);
+		}
+	}
+
+	beforeBump() {
+		const workspaces = this.getWorkspaces();
+		const messages = [
+			"Workspaces to process:",
+			...workspaces.map((w) => `  ${w.relativeRoot}`),
+			"",
+		];
+
+		this.log.log(messages.join("\n"));
+	}
+
+	async bump(version) {
+		let { distTag } = this.options;
+
+		if (!distTag) {
+			const { isPreRelease, preReleaseId } = parseVersion(version);
+			distTag =
+				this.options.distTag || isPreRelease ? preReleaseId : DEFAULT_TAG;
+		}
+		const workspaces = this.getWorkspaces();
+
+		const packagesToPublish = workspaces
+			.filter((w) => !w.isPrivate)
+			.map((workspace) => workspace.name);
+
+		const workspacesToUpdate = workspaces.map(
+			(workspace) => workspace.relativeRoot,
+		);
+
+		// Generate changelog preview if configured
+		let changelogPreview = null;
+		if (this.changelogPlugin) {
+			// Save original context
+			const originalContext = this.changelogPlugin.getContext();
+
+			// Temporarily set version for preview
+			this.changelogPlugin.setContext({ version });
+			changelogPreview = await this.changelogPlugin.generateChangelog();
+
+			// Restore original context
+			this.changelogPlugin.setContext(originalContext);
+
+			this.log.log("📄 Changelog preview:");
+			this.log.log("─".repeat(50));
+			this.log.log(changelogPreview);
+			this.log.log("─".repeat(50));
+		}
+
+		this.setContext({
+			distTag,
+			packagesToPublish,
+			workspacesToUpdate,
+			version,
+			changelogPreview,
+		});
+
+		const task = async () => {
+			const { isDryRun } = this.config;
+
+			const updateVersion = (pkgInfo) => {
+				let { pkg } = pkgInfo;
+				let originalVersion = pkg.version;
+
+				if (originalVersion === version) {
+					this.log.warn(`\tDid not update version (already at ${version}).`);
+				}
+
+				this.log.exec(`\tversion: -> ${version} (from ${originalVersion})`);
+
+				if (!isDryRun) {
+					pkg.version = version;
+				}
+			};
+
+			workspaces.forEach(({ relativeRoot, pkgInfo }) => {
+				this.log.exec(`Processing ${relativeRoot}/package.json:`);
+
+				updateVersion(pkgInfo);
+				this._updateDependencies(pkgInfo, version);
+
+				if (!isDryRun) {
+					pkgInfo.write();
+				}
+			});
+
+			const additionalManifests = this.getAdditionalManifests();
+			if (additionalManifests.dependencyUpdates) {
+				additionalManifests.dependencyUpdates.forEach(
+					({ relativeRoot, pkgInfo }) => {
+						this.log.exec(
+							`Processing additionManifest.dependencyUpdates for ${relativeRoot}/package.json:`,
+						);
+
+						this._updateDependencies(pkgInfo, version);
+
+						if (!isDryRun) {
+							pkgInfo.write();
+						}
+					},
+				);
+			}
+
+			if (additionalManifests.versionUpdates) {
+				additionalManifests.versionUpdates.forEach(
+					({ relativeRoot, pkgInfo }) => {
+						this.log.exec(
+							`Processing additionManifest.versionUpdates for ${relativeRoot}/package.json:`,
+						);
+						updateVersion(pkgInfo);
+
+						if (!isDryRun) {
+							pkgInfo.write();
+						}
+					},
+				);
+			}
+
+			/**
+			 * In workflows where publishing is handled on C.I.,
+			 * and not be release-it, the environment will often require
+			 * that the lockfile be updated -- this is usually done by
+			 * running the install command for the package manager.
+			 */
+			if (hasPnpm()) {
+				await this.exec(`pnpm install`);
+			}
+
+			// Update changelog if configured
+			if (this.changelogPlugin && !isDryRun) {
+				this.log.exec("Updating CHANGELOG.md...");
+				await this.changelogPlugin.bump(version);
+				await this.changelogPlugin.writeChangelog();
+			}
+		};
+
+		return this.step({
+			task,
+			label: "Update workspace versions",
+			prompt: "update-versions",
+		});
+	}
+
+	async release() {
+		if (this.options.publish === false) return;
+
+		// creating a stable object that is shared across all package publishes
+		// this ensures that we don't accidentally prompt multiple times (e.g. once
+		// per package) due to loosing the otp value after each `this.publish` call
+		const otp = {
+			value: this.options.otp,
+		};
+
+		const tag = this.getContext("distTag");
+		const task = async () => {
+			await this.eachWorkspace(async (workspaceInfo) => {
+				await this.publish({ tag, workspaceInfo, otp });
+			});
+		};
+
+		await this.step({ task, label: "npm publish", prompt: "publish" });
+	}
+
+	async afterRelease() {
+		let workspaces = this.getWorkspaces();
+
+		workspaces.forEach((workspaceInfo) => {
+			if (workspaceInfo.isReleased) {
+				this.log.log(`🔗 ${this.getReleaseUrl(workspaceInfo)}`);
+			}
+		});
+	}
+
+	_buildReplacementDepencencyVersion(existingVersion, newVersion) {
+		let prefix = "";
+		let range = existingVersion;
+		let suffix = newVersion;
+
+		// preserve workspace protocol prefix,
+		// tools that use this replace with a real version during the publish the process
+		if (existingVersion.startsWith("workspace:")) {
+			prefix = "workspace:";
+			range = existingVersion.slice(prefix.length);
+			suffix = range.length > 1 ? newVersion : "";
+		}
+
+		// capture any leading characters up to the first digit
+		const operator = range.match(/^[^0-9]*/)[0];
+		if ("*" === range) {
+			return `${prefix}*`;
+		}
+
+		return `${prefix}${operator}${suffix}`;
+	}
+
+	_updateDependencies(pkgInfo, newVersion) {
+		const { isDryRun } = this.config;
+		const workspaces = this.getWorkspaces();
+		const { pkg } = pkgInfo;
+
+		const updateDependencies = (dependencyType) => {
+			let dependencies = pkg[dependencyType];
+
+			if (dependencies) {
+				for (let dependency in dependencies) {
+					if (workspaces.find((w) => w.name === dependency)) {
+						const existingVersion = dependencies[dependency];
+						const replacementVersion = this._buildReplacementDepencencyVersion(
+							existingVersion,
+							newVersion,
+						);
+
+						this.log.exec(
+							`\t${dependencyType}: \`${dependency}\` -> ${replacementVersion} (from ${existingVersion})`,
+						);
+
+						if (!isDryRun) {
+							dependencies[dependency] = replacementVersion;
+						}
+					}
+				}
+			}
+		};
+
+		updateDependencies("dependencies");
+		updateDependencies("devDependencies");
+		updateDependencies("optionalDependencies");
+		updateDependencies("peerDependencies");
+	}
+
+	_formatPublishMessage(distTag, packageNames) {
+		const messages = [
+			"Preparing to publish:",
+			...packageNames.map(
+				(name) => `    ${name}${distTag === "latest" ? "" : `@${distTag}`}`,
+			),
+			"  Publish to npm:",
+		];
+
+		return messages.join("\n");
+	}
+
+	async isRegistryUp() {
+		const registry = this.getRegistry();
+		const program = this.isPNPM() ? "pnpm" : "npm";
+
+		try {
+			await this.exec(`${program} ping --registry ${registry}`);
+
+			return true;
+		} catch (error) {
+			if (
+				/code E40[04]|404.*(ping not found|No content for path)/.test(error)
+			) {
+				this.log.warn(
+					`Ignoring unsupported \`${program} ping\` command response.`,
+				);
+				return true;
+			}
+			return false;
+		}
+	}
+
+	async isAuthenticated() {
+		const registry = this.getRegistry();
+		const program = this.isPNPM() ? "pnpm" : "npm";
+
+		try {
+			await this.exec(`${program} whoami --registry ${registry}`);
+			return true;
+		} catch (error) {
+			this.debug(error);
+
+			if (/code E40[04]/.test(error)) {
+				this.log.warn(
+					`Ignoring unsupported \`${program} whoami\` command response.`,
+				);
+				return true;
+			}
+
+			return false;
+		}
+	}
+
+	getReleaseUrl(workspaceInfo) {
+		const registry = this.getRegistry();
+		const baseUrl = registry !== NPM_DEFAULT_REGISTRY ? registry : NPM_BASE_URL;
+
+		return urlJoin(baseUrl, "package", workspaceInfo.name);
+	}
+
+	getRegistry() {
+		const { publishConfig } = this.getContext();
+		const registries = publishConfig
+			? publishConfig.registry
+				? [publishConfig.registry]
+				: Object.keys(publishConfig)
+						.filter((key) => key.endsWith("registry"))
+						.map((key) => publishConfig[key])
+			: [];
+		return registries[0] || NPM_DEFAULT_REGISTRY;
+	}
+
+	isPNPM() {
+		return hasPnpm();
+	}
+
+	async publish({ tag, workspaceInfo, otp, access } = {}) {
+		const isScoped = workspaceInfo.name.startsWith("@");
+
+		const pathToWorkspace = `./${workspaceInfo.relativeRoot}`;
+		const publishCommand = this.getContext().publishCommand;
+
+		const args = [pathToWorkspace, "--tag", tag];
+		if (access) args.push("--access", access);
+		if (otp.value) args.push("--otp", otp.value);
+		if (this.config.isDryRun) args.push("--dry-run");
+
+		if (workspaceInfo.isPrivate) {
+			this.debug(`${workspaceInfo.name}: Skip publish (package is private)`);
+			return;
+		}
+
+		try {
+			if (!publishCommand) {
+				const program = this.isPNPM() ? "pnpm" : "npm";
+				const command = `${program} publish ${args.join(" ")}`;
+				await this.exec(command, { options });
+			} else {
+				const env = {
+					RELEASE_IT_WORKSPACES_PATH_TO_WORKSPACE: pathToWorkspace,
+					RELEASE_IT_WORKSPACES_TAG: tag ?? "",
+					RELEASE_IT_WORKSPACES_ACCESS: access ?? "",
+					RELEASE_IT_WORKSPACES_OTP: otp.value ?? "",
+					RELEASE_IT_WORKSPACES_DRY_RUN: String(this.config.isDryRun),
+					...process.env,
+				};
+				await execaCommand(publishCommand, { env, stdio: "inherit" });
+			}
+
+			workspaceInfo.isReleased = true;
+		} catch (err) {
+			this.debug(err);
+			if (/one-time pass/.test(err)) {
+				if (otp.value != null) {
+					this.log.warn("The provided OTP is incorrect or has expired.");
+				}
+
+				await this.step({
+					prompt: "otp",
+					task(newOtp) {
+						otp.value = newOtp;
+					},
+				});
+
+				return await this.publish({ tag, workspaceInfo, otp, access });
+			} else if (isScoped && /private packages/.test(err)) {
+				let publishAsPublic = false;
+
+				await this.step({
+					prompt: "publish-as-public",
+					task(value) {
+						publishAsPublic = value;
+					},
+				});
+
+				if (publishAsPublic) {
+					return await this.publish({
+						tag,
+						workspaceInfo,
+						otp,
+						access: "public",
+					});
+				} else {
+					this.log.warn(`${workspaceInfo.name} was not published.`);
+				}
+			}
+			throw err;
+		}
+	}
+
+	async eachWorkspace(action) {
+		let workspaces = this.getWorkspaces();
+
+		for (let workspaceInfo of workspaces) {
+			try {
+				this.setContext({
+					currentPackage: workspaceInfo,
+				});
+
+				await action(workspaceInfo);
+			} finally {
+				this.setContext({
+					currentPackage: null,
+				});
+			}
+		}
+	}
+
+	getAdditionalManifests() {
+		let root = this.getContext("root");
+		let additionalManifestsConfig = this.getContext("additionalManifests");
+		let additionalManifests = {
+			dependencyUpdates: null,
+			versionUpdates: null,
+		};
+
+		let versionUpdates = ["package.json"];
+
+		if (additionalManifestsConfig) {
+			additionalManifests.dependencyUpdates = findAdditionalManifests(
+				root,
+				additionalManifestsConfig.dependencyUpdates,
+			);
+
+			if (additionalManifestsConfig.versionUpdates) {
+				versionUpdates = additionalManifestsConfig.versionUpdates;
+			}
+		}
+
+		additionalManifests.versionUpdates = findAdditionalManifests(
+			root,
+			versionUpdates,
+		);
+
+		this._additionalManifests = additionalManifests;
+
+		return this._additionalManifests;
+	}
+
+	getWorkspaces() {
+		if (this._workspaces) {
+			return this._workspaces;
+		}
+
+		let root = this.getContext("root");
+		let workspaces = this.getContext("workspaces");
+
+		let packageJSONFiles = walkSync(".", {
+			globs: workspaces.map((glob) => `${glob}/package.json`),
+		});
+
+		this._workspaces = packageJSONFiles.map((file) => {
+			let absolutePath = path.join(root, file);
+			let pkgInfo = JSONFile.for(absolutePath);
+
+			let relativeRoot = path.dirname(file);
+
+			return {
+				root: path.join(root, relativeRoot),
+				relativeRoot,
+				name: pkgInfo.pkg.name,
+				isPrivate: !!pkgInfo.pkg.private,
+				isReleased: false,
+				pkgInfo,
+			};
+		});
+
+		return this._workspaces;
+	}
 }

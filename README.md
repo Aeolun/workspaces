@@ -131,6 +131,34 @@ interface ReleaseItWorkSpacesConfiguration {
     */
     dependencyUpdates?: string[];
   };
+
+  /**
+    Configuration for integrated changelog generation using conventional commits.
+    When configured, the plugin will show a changelog preview and only update
+    CHANGELOG.md when you confirm the workspace version updates.
+
+    Requires @release-it/conventional-changelog to be installed.
+  */
+  changelog?: {
+    /**
+      Preset configuration for conventional changelog.
+    */
+    preset?: {
+      name: string;
+    };
+
+    /**
+      Path to the changelog file.
+
+      Defaults to 'CHANGELOG.md'.
+    */
+    infile?: string;
+
+    /**
+      Additional options passed to conventional-changelog.
+    */
+    [key: string]: any;
+  };
 }
 ```
 
@@ -296,6 +324,75 @@ newly published versions.
     }
   }
 }
+```
+
+### changelog
+
+The `@aeolun/workspaces` plugin includes optional integration with conventional changelog generation. When configured, it will:
+
+1. **Show a changelog preview** before asking for confirmation
+2. **Only update CHANGELOG.md** when you confirm the workspace version updates
+3. **Generate changelog from conventional commits** using the same engine as `@release-it/conventional-changelog`
+
+#### Installation
+
+First, install the optional dependency:
+
+```sh
+npm install --save-dev @release-it/conventional-changelog
+
+# or
+
+yarn add --dev @release-it/conventional-changelog
+```
+
+#### Configuration
+
+Configure both the workspaces plugin and disable the separate conventional changelog plugin:
+
+```json
+{
+  "release-it": {
+    "plugins": {
+      "@aeolun/workspaces": {
+        "changelog": {
+          "preset": {
+            "name": "conventionalcommits"
+          },
+          "infile": "CHANGELOG.md"
+        }
+      },
+      "@release-it/conventional-changelog": false
+    }
+  }
+}
+```
+
+#### User Experience
+
+With changelog integration enabled, the release flow becomes:
+
+1. **Preview phase**: Shows exactly what will be added to CHANGELOG.md
+2. **Confirmation prompt**: "Update workspace package versions to 1.2.3? Workspaces: pkg1, pkg2. This will also update CHANGELOG.md"
+3. **Conditional update**: CHANGELOG.md is only modified if you answer "yes"
+
+Example output:
+```
+📄 Changelog preview:
+──────────────────────────────────────────────────────
+## [1.2.3](https://github.com/user/repo/compare/v1.2.2...v1.2.3) (2025-01-15)
+
+### Bug Fixes
+
+* fix critical issue with workspace publishing ([abc123](https://github.com/user/repo/commit/abc123))
+
+### Features
+
+* add new workspace management capabilities ([def456](https://github.com/user/repo/commit/def456))
+──────────────────────────────────────────────────────
+? Update workspace package versions to 1.2.3?
+  Workspaces: package-a, package-b
+  This will also update CHANGELOG.md (y/N)
 ```
 
 ## License

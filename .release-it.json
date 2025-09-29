@@ -4,10 +4,10 @@
 		"requireCleanWorkingDir": false,
 		"commitArgs": ["--no-verify"]
 	},
-    "npm": {
-        "skipChecks": true,
-        "access": "public"
-    },
+	"npm": {
+		"skipChecks": true,
+		"access": "public"
+	},
 	"plugins": {
 		"@release-it/conventional-changelog": {
 			"preset": {
