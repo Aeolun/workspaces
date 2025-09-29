@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.2.1 (2025-09-29)
+
+### Bug Fixes
+
+* remove extra newline in workspace logging that broke test snapshots ([7a572ca](https://github.com/aeolun/workspaces/commit/7a572ca53de9cffa896a7c1f222d00ebda153ba6))
+
 ## 5.2.0 (2025-09-18)
 
 ### Features
