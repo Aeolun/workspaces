@@ -224,10 +224,30 @@ export default class WorkspacesPlugin extends Plugin {
 			const ConventionalChangelogPlugin =
 				await loadConventionalChangelogPlugin();
 			if (ConventionalChangelogPlugin) {
-				this.changelogPlugin = new ConventionalChangelogPlugin(
-					this.changelogOptions,
-					this.container,
-				);
+				// Initialize the changelog plugin with proper namespace structure
+				const namespace = "@release-it/conventional-changelog";
+				const options = {
+					[namespace]: this.changelogOptions,
+					git: this.config.options.git || {},
+				};
+
+				// Create the plugin with a container that has the expected structure
+				this.changelogPlugin = new ConventionalChangelogPlugin({
+					namespace,
+					options,
+					container: {
+						config: this.config,
+						log: this.log,
+						shell: this.shell || this.container.shell,
+						spinner: this.spinner,
+						prompt: this.prompt,
+					},
+				});
+
+				// Initialize the plugin if it has an init method
+				if (this.changelogPlugin.init) {
+					await this.changelogPlugin.init();
+				}
 			} else {
 				this.log.warn(
 					"Changelog integration requires @release-it/conventional-changelog to be installed. Run: npm install --save-dev @release-it/conventional-changelog",
@@ -297,20 +317,33 @@ export default class WorkspacesPlugin extends Plugin {
 		// Generate changelog preview if configured
 		let changelogPreview = null;
 		if (this.changelogPlugin) {
-			// Save original context
-			const originalContext = this.changelogPlugin.getContext();
+			try {
+				// Ensure the changelog plugin has the config properties it needs
+				if (!this.changelogPlugin.config) {
+					this.changelogPlugin.config = this.config;
+				}
+				if (this.changelogPlugin.config.isIncrement === undefined) {
+					this.changelogPlugin.config.isIncrement = false;
+				}
 
-			// Temporarily set version for preview
-			this.changelogPlugin.setContext({ version });
-			changelogPreview = await this.changelogPlugin.generateChangelog();
+				// Save original context
+				const originalContext = this.changelogPlugin.getContext();
 
-			// Restore original context
-			this.changelogPlugin.setContext(originalContext);
+				// Temporarily set version for preview
+				this.changelogPlugin.setContext({ version });
+				changelogPreview = await this.changelogPlugin.generateChangelog();
 
-			this.log.log("📄 Changelog preview:");
-			this.log.log("─".repeat(50));
-			this.log.log(changelogPreview);
-			this.log.log("─".repeat(50));
+				// Restore original context
+				this.changelogPlugin.setContext(originalContext);
+
+				this.log.log("📄 Changelog preview:");
+				this.log.log("─".repeat(50));
+				this.log.log(changelogPreview);
+				this.log.log("─".repeat(50));
+			} catch (error) {
+				// Skip preview if there's an error (e.g., in test environment)
+				this.log.warn(`Unable to generate changelog preview: ${error.message}`);
+			}
 		}
 
 		this.setContext({

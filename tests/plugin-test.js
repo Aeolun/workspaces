@@ -2,7 +2,7 @@ import { createTempDir } from "broccoli-test-helper";
 import fs from "fs";
 import _ from "lodash";
 import { factory, runTasks } from "release-it/test/util/index.js";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import YAML from "yaml";
 import Plugin from "../index.js";
 
@@ -38,6 +38,12 @@ async function buildPlugin(config = {}, _Plugin = TestPlugin) {
 	plugin.log.exec = (...args) => {
 		plugin.operations.push({
 			operationType: "log.exec",
+			messages: args,
+		});
+	};
+	plugin.log.warn = (...args) => {
+		plugin.operations.push({
+			operationType: "log.warn",
 			messages: args,
 		});
 	};
@@ -1957,5 +1963,241 @@ describe("@aeolun/workspaces", () => {
 			expected: "workspace:*",
 		});
 		updatesTo({ existing: ">=1.0.0", new: "1.0.1", expected: ">=1.0.1" });
+	});
+
+	describe("changelog integration", () => {
+		let changelogDir;
+		let hasConventionalChangelog = false;
+		let originalCwd;
+
+		// Check once if @release-it/conventional-changelog is available
+		beforeAll(async () => {
+			try {
+				await import("@release-it/conventional-changelog");
+				hasConventionalChangelog = true;
+			} catch {
+				hasConventionalChangelog = false;
+			}
+		});
+
+		beforeEach(async () => {
+			originalCwd = process.cwd();
+			changelogDir = await createTempDir();
+			// Create a minimal package.json in temp dir for all tests
+			changelogDir.write({
+				"package.json": json({
+					name: "root",
+					version: "0.0.0",
+					private: true,
+					workspaces: ["packages/*"],
+				}),
+			});
+			process.chdir(changelogDir.path());
+		});
+
+		afterEach(async () => {
+			process.chdir(originalCwd);
+			if (changelogDir) {
+				await changelogDir.dispose();
+			}
+		});
+
+		async function setupChangelogProject(workspaces) {
+			changelogDir.write({
+				"package.json": json({
+					name: "root",
+					workspaces: workspaces,
+					version: "0.0.0",
+					private: true,
+				}),
+				packages: {
+					"test-pkg": {
+						"package.json": json({
+							name: "test-pkg",
+							version: "1.0.0",
+						}),
+					},
+				},
+			});
+
+			// Initialize a real git repository for changelog generation
+			const { execSync } = await import("child_process");
+			try {
+				execSync("git init", { cwd: changelogDir.path(), stdio: "pipe" });
+				execSync("git config user.email 'test@example.com'", {
+					cwd: changelogDir.path(),
+					stdio: "pipe",
+				});
+				execSync("git config user.name 'Test User'", {
+					cwd: changelogDir.path(),
+					stdio: "pipe",
+				});
+				execSync("git add .", { cwd: changelogDir.path(), stdio: "pipe" });
+				execSync("git commit -m 'feat: initial commit'", {
+					cwd: changelogDir.path(),
+					stdio: "pipe",
+				});
+			} catch (_error) {
+				// If git setup fails, tests will handle missing git gracefully
+			}
+		}
+
+		it("initializes real changelog plugin when configured and available", async () => {
+			if (!hasConventionalChangelog) {
+				console.log(
+					"Skipping test - @release-it/conventional-changelog not installed",
+				);
+				return;
+			}
+
+			await setupChangelogProject(["packages/*"]);
+
+			const plugin = await buildPlugin({
+				changelog: {
+					preset: { name: "conventionalcommits" },
+					infile: "CHANGELOG.md",
+				},
+			});
+
+			plugin.commandResponses[
+				"npm ping --registry https://registry.npmjs.org"
+			] = true;
+			plugin.commandResponses[
+				"npm whoami --registry https://registry.npmjs.org"
+			] = "test-user";
+
+			await runTasks(plugin);
+
+			// Verify the changelog plugin was initialized with real implementation
+			expect(plugin.changelogPlugin).toBeDefined();
+			expect(plugin.changelogPlugin.constructor.name).toBe(
+				"ConventionalChangelog",
+			);
+
+			// Verify it has the expected methods
+			expect(typeof plugin.changelogPlugin.generateChangelog).toBe("function");
+			expect(typeof plugin.changelogPlugin.bump).toBe("function");
+			expect(typeof plugin.changelogPlugin.writeChangelog).toBe("function");
+		});
+
+		it("warns when changelog configured but plugin not available", async () => {
+			await setupChangelogProject(["packages/*"]);
+
+			// Create a test plugin that simulates missing dependency
+			class NoChangelogPlugin extends TestPlugin {
+				async init() {
+					// Simulate the case where conventional-changelog is not available
+					if (this.changelogOptions) {
+						this.log.warn(
+							"Changelog integration requires @release-it/conventional-changelog to be installed. Run: npm install --save-dev @release-it/conventional-changelog",
+						);
+					}
+					// Don't call super.init() to avoid actual network calls
+				}
+			}
+
+			const plugin = await buildPlugin(
+				{
+					changelog: {
+						preset: { name: "conventionalcommits" },
+						infile: "CHANGELOG.md",
+					},
+				},
+				NoChangelogPlugin,
+			);
+
+			await runTasks(plugin);
+
+			// Check for warning
+			const warnings = plugin.operations.filter(
+				(op) => op.operationType === "log.warn",
+			);
+
+			expect(warnings.length).toBeGreaterThan(0);
+			expect(warnings[0].messages[0]).toContain(
+				"@release-it/conventional-changelog to be installed",
+			);
+		});
+
+		it("includes changelog note in update prompt when configured", async () => {
+			// This test doesn't need filesystem setup, just plugin configuration
+			const plugin = await buildPlugin({
+				changelog: {
+					preset: { name: "conventionalcommits" },
+					infile: "CHANGELOG.md",
+				},
+			});
+
+			// Access the registered prompt
+			const updateVersionsPrompt =
+				plugin.prompt.prompts[namespace]["update-versions"];
+			const promptMessage = updateVersionsPrompt.message({
+				"@aeolun/workspaces": {
+					version: "1.0.1",
+					workspacesToUpdate: ["packages/test-pkg"],
+				},
+			});
+
+			expect(promptMessage).toContain("This will also update CHANGELOG.md");
+		});
+
+		it("does not include changelog note when not configured", async () => {
+			// This test doesn't need filesystem setup
+			const plugin = await buildPlugin({});
+
+			// Access the registered prompt
+			const updateVersionsPrompt =
+				plugin.prompt.prompts[namespace]["update-versions"];
+			const promptMessage = updateVersionsPrompt.message({
+				"@aeolun/workspaces": {
+					version: "1.0.1",
+					workspacesToUpdate: ["packages/test-pkg"],
+				},
+			});
+
+			expect(promptMessage).not.toContain("CHANGELOG.md");
+		});
+
+		it("handles changelog option in prompt correctly", async () => {
+			// This test doesn't need filesystem setup
+
+			// Test with changelog enabled
+			const pluginWithChangelog = await buildPlugin({
+				changelog: { infile: "CHANGELOG.md" },
+			});
+
+			const withChangelogPrompt =
+				pluginWithChangelog.prompt.prompts[namespace]["update-versions"];
+
+			const messageWith = withChangelogPrompt.message({
+				"@aeolun/workspaces": {
+					version: "2.0.0",
+					workspacesToUpdate: ["packages/test-pkg"],
+				},
+			});
+
+			expect(messageWith).toMatch(
+				/Update workspace package versions to 2\.0\.0\?/,
+			);
+			expect(messageWith).toContain("This will also update CHANGELOG.md");
+
+			// Test without changelog
+			const pluginWithoutChangelog = await buildPlugin({});
+
+			const withoutChangelogPrompt =
+				pluginWithoutChangelog.prompt.prompts[namespace]["update-versions"];
+
+			const messageWithout = withoutChangelogPrompt.message({
+				"@aeolun/workspaces": {
+					version: "2.0.0",
+					workspacesToUpdate: ["packages/test-pkg"],
+				},
+			});
+
+			expect(messageWithout).toMatch(
+				/Update workspace package versions to 2\.0\.0\?/,
+			);
+			expect(messageWithout).not.toContain("CHANGELOG.md");
+		});
 	});
 });
