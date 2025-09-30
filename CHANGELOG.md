@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.2.3 (2025-09-30)
+
+### Bug Fixes
+
+* add automatic version determination from conventional commits ([84e9c5b](https://github.com/aeolun/workspaces/commit/84e9c5b28e2f31c14ef33a23e0e846f78d59f680))
+
 ## 5.2.2 (2025-09-30)
 
 ### Bug Fixes

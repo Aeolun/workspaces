@@ -1,6 +1,6 @@
 {
 	"name": "@aeolun/workspaces",
-	"version": "5.2.2",
+	"version": "5.2.3",
 	"description": "release-it plugin for bumping and publishing workspaces",
 	"keywords": [
 		"release",
