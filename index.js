@@ -164,6 +164,16 @@ export default class WorkspacesPlugin extends Plugin {
 		return fs.existsSync(ROOT_MANIFEST_PATH) && options !== false;
 	}
 
+	static disablePlugin(options) {
+		// If changelog is configured and not ignoring recommended bump, disable version plugin
+		// This allows conventional-changelog to determine the version automatically
+		const changelogOptions = options["@aeolun/workspaces"]?.changelog;
+		if (changelogOptions && !changelogOptions.ignoreRecommendedBump) {
+			return "version";
+		}
+		return null;
+	}
+
 	constructor(...args) {
 		super(...args);
 
@@ -294,6 +304,24 @@ export default class WorkspacesPlugin extends Plugin {
 		];
 
 		this.log.log(messages.join("\n"));
+	}
+
+	getIncrementedVersion(options) {
+		// If changelog plugin is available, delegate version determination to it
+		if (this.changelogPlugin && this.changelogPlugin.getIncrementedVersion) {
+			return this.changelogPlugin.getIncrementedVersion(options);
+		}
+		// Otherwise, return null to let release-it prompt for version
+		return null;
+	}
+
+	getIncrementedVersionCI(options) {
+		// If changelog plugin is available, delegate version determination to it
+		if (this.changelogPlugin && this.changelogPlugin.getIncrementedVersionCI) {
+			return this.changelogPlugin.getIncrementedVersionCI(options);
+		}
+		// Otherwise, return null to let release-it prompt for version
+		return null;
 	}
 
 	async bump(version) {

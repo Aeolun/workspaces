@@ -368,13 +368,38 @@ Configure both the workspaces plugin and disable the separate conventional chang
 }
 ```
 
+#### Automatic Version Determination
+
+When changelog integration is enabled, the workspaces plugin automatically determines the next version based on your conventional commit messages:
+
+- `feat:` commits → **minor** version bump (e.g., 1.0.0 → 1.1.0)
+- `fix:` commits → **patch** version bump (e.g., 1.0.0 → 1.0.1)
+- Commits with `BREAKING CHANGE:` in the body → **major** version bump (e.g., 1.0.0 → 2.0.0)
+
+This eliminates the need to manually select the version increment - release-it will automatically determine it from your commit history.
+
+To disable automatic version determination and manually select the version:
+
+```json
+{
+  "@aeolun/workspaces": {
+    "changelog": {
+      "preset": { "name": "conventionalcommits" },
+      "infile": "CHANGELOG.md",
+      "ignoreRecommendedBump": true
+    }
+  }
+}
+```
+
 #### User Experience
 
 With changelog integration enabled, the release flow becomes:
 
-1. **Preview phase**: Shows exactly what will be added to CHANGELOG.md
-2. **Confirmation prompt**: "Update workspace package versions to 1.2.3? Workspaces: pkg1, pkg2. This will also update CHANGELOG.md"
-3. **Conditional update**: CHANGELOG.md is only modified if you answer "yes"
+1. **Automatic version determination**: Based on conventional commit messages (unless `ignoreRecommendedBump` is true)
+2. **Preview phase**: Shows exactly what will be added to CHANGELOG.md
+3. **Confirmation prompt**: "Update workspace package versions to 1.2.3? Workspaces: pkg1, pkg2. This will also update CHANGELOG.md"
+4. **Conditional update**: CHANGELOG.md is only modified if you answer "yes"
 
 Example output:
 ```
