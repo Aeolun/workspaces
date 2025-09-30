@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.2.2 (2025-09-30)
+
+### Bug Fixes
+
+* ensure changelog plugin has proper config and shell in tests ([8aa4f99](https://github.com/aeolun/workspaces/commit/8aa4f999b477ae93bb1aa567006ac74236ee0489))
+
 ## 5.2.1 (2025-09-29)
 
 ### Bug Fixes
